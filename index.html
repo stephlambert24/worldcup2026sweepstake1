@@ -1464,5 +1464,54 @@ function renderStats(standings, ownerMap, lb, scorers) {
       const hue   = Math.round(240 - pct * 180); // 240=blue, 60=yellow, 0=red
       html += `
         <div class="group-heat-card" style="background:hsla(${hue},70%,40%,0.25);border-color:hsla(${hue},70%,50%,0.3)">
-        
+          <div class="gh-grp">GROUP ${g}</div>
+          <div class="gh-goals" style="color:hsl(${hue},80%,70%)">${goals}</div>
+          <div class="gh-avg">${avg}/game</div>
+        </div>`;
+    });
+    html += `</div></div>`;
+  }
 
+  document.getElementById('tab-stats').innerHTML = html;
+}
+
+
+function showTab(id, btn) {
+  document.querySelectorAll('.tab-panel').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('nav button').forEach(b=>b.classList.remove('active'));
+  document.getElementById('tab-'+id).classList.add('active');
+  btn.classList.add('active');
+}
+function showTabById(id) {
+  document.querySelectorAll('.tab-panel').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('nav button').forEach(b=>b.classList.remove('active'));
+  document.getElementById('tab-'+id).classList.add('active');
+  const btn=[...document.querySelectorAll('nav button')].find(b=>b.getAttribute('onclick')?.includes("'"+id+"'"));
+  if(btn) btn.classList.add('active');
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// REFRESH
+// ════════════════════════════════════════════════════════════════════════════
+async function refresh() {
+  document.getElementById('updated-time').innerHTML = `<span class="live-dot"></span>Refreshing…`;
+  try { await fetchData(); renderAll(); }
+  catch(e) { document.getElementById('updated-time').innerHTML = `⚠️ Failed — ${e.message}`; }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// INIT
+// ════════════════════════════════════════════════════════════════════════════
+(async function(){
+  try { await fetchData(); renderAll(); }
+  catch(e) {
+    document.getElementById('tab-dashboard').innerHTML = `
+      <div class="error-box"><strong>⚠️ Could not load data</strong><br><br>
+      ${e.message}<br><br>Check your connection and hit Refresh.<br>
+      Source: <code style="font-size:11px">${DATA_URL}</code></div>`;
+    document.getElementById('updated-time').innerHTML = `⚠️ Fetch failed`;
+  }
+})();
+</script>
+</body>
+</html>
