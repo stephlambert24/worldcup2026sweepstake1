@@ -604,6 +604,7 @@ async function fetchData() {
       venue:   m.ground || "",
       hg:      m.score ? m.score.ft[0] : null,
       ag:      m.score ? m.score.ft[1] : null,
+      pens:    (m.score && m.score.p) ? m.score.p : null,
       goals1:  (m.goals1||[]).map(g=>({...g, team:norm(m.team1)})),
       goals2:  (m.goals2||[]).map(g=>({...g, team:norm(m.team2)})),
       isKnockout,
@@ -678,7 +679,41 @@ function computeScorers(ownerMap) {
 // ════════════════════════════════════════════════════════════════════════════
 // LEADERBOARD
 // ════════════════════════════════════════════════════════════════════════════
+// Work out which teams are OUT, straight from the live feed:
+//  • group stage — any team that didn't make it into the knockout bracket
+//  • knockouts   — the loser of any played tie (incl. penalty shoot-outs)
+function getEliminatedTeams() {
+  const out = new Set();
+
+  // Pool of teams that reached the knockouts (real names in the KO fixtures)
+  const koPool = new Set();
+  knockoutMatches.forEach(m => {
+    if (FLAGS[m.home]) koPool.add(m.home);
+    if (FLAGS[m.away]) koPool.add(m.away);
+  });
+
+  // Once the group stage is complete, anyone not in the KO pool went out in the groups
+  const groupsComplete = groupMatches.length > 0 && groupMatches.every(m => m.hg !== null);
+  if (groupsComplete && koPool.size > 0) {
+    Object.values(GROUP_TEAMS).flat().forEach(t => { if (!koPool.has(t)) out.add(t); });
+  }
+
+  // Losers of played knockout ties (use penalties when full-time is level)
+  knockoutMatches.forEach(m => {
+    if (m.hg === null || !FLAGS[m.home] || !FLAGS[m.away]) return;
+    let loser = null;
+    if (m.hg > m.ag)      loser = m.away;
+    else if (m.hg < m.ag) loser = m.home;
+    else if (m.pens)      loser = m.pens[0] > m.pens[1] ? m.away
+                                : m.pens[1] > m.pens[0] ? m.home : null;
+    if (loser) out.add(loser);
+  });
+
+  return out;
+}
+
 function buildLeaderboard(standings, ownerMap) {
+  const eliminated = getEliminatedTeams();
   return PARTICIPANTS.map(p=>{
     let pts=0,alive=0; const statusArr=[];
     p.countries.forEach(c=>{
@@ -687,9 +722,10 @@ function buildLeaderboard(standings, ownerMap) {
         if(idx<0)return;
         pts+=grp[idx].pts;
         const pos=idx+1, ap=grp.every(t=>t.mp===3);
-        if(ap){
-          if(pos<=2){statusArr.push({c,label:"Through ✅",color:"#22c55e"});alive++;}
-          else statusArr.push({c,label:"Eliminated ❌",color:"#ef4444"});
+        if(eliminated.has(c)){
+          statusArr.push({c,label:"Eliminated ❌",color:"#ef4444"});
+        } else if(ap){
+          statusArr.push({c,label:"Still in ✅",color:"#22c55e"});alive++;
         } else {
           statusArr.push({c,label:`P${pos} Grp ${g}`,color:pos<=2?"#60a5fa":"#f59e0b"});
           alive++;
@@ -1428,55 +1464,5 @@ function renderStats(standings, ownerMap, lb, scorers) {
       const hue   = Math.round(240 - pct * 180); // 240=blue, 60=yellow, 0=red
       html += `
         <div class="group-heat-card" style="background:hsla(${hue},70%,40%,0.25);border-color:hsla(${hue},70%,50%,0.3)">
-          <div class="gh-grp">GROUP ${g}</div>
-          <div class="gh-goals" style="color:hsl(${hue},80%,70%)">${goals}</div>
-          <div class="gh-avg">${avg}/game</div>
-        </div>`;
-    });
-    html += `</div></div>`;
-  }
-
-  document.getElementById('tab-stats').innerHTML = html;
-}
-
-
-function showTab(id, btn) {
-  document.querySelectorAll('.tab-panel').forEach(p=>p.classList.remove('active'));
-  document.querySelectorAll('nav button').forEach(b=>b.classList.remove('active'));
-  document.getElementById('tab-'+id).classList.add('active');
-  btn.classList.add('active');
-}
-function showTabById(id) {
-  document.querySelectorAll('.tab-panel').forEach(p=>p.classList.remove('active'));
-  document.querySelectorAll('nav button').forEach(b=>b.classList.remove('active'));
-  document.getElementById('tab-'+id).classList.add('active');
-  const btn=[...document.querySelectorAll('nav button')].find(b=>b.getAttribute('onclick')?.includes("'"+id+"'"));
-  if(btn) btn.classList.add('active');
-}
-
-// ════════════════════════════════════════════════════════════════════════════
-// REFRESH
-// ════════════════════════════════════════════════════════════════════════════
-async function refresh() {
-  document.getElementById('updated-time').innerHTML = `<span class="live-dot"></span>Refreshing…`;
-  try { await fetchData(); renderAll(); }
-  catch(e) { document.getElementById('updated-time').innerHTML = `⚠️ Failed — ${e.message}`; }
-}
-
-// ════════════════════════════════════════════════════════════════════════════
-// INIT
-// ════════════════════════════════════════════════════════════════════════════
-(async function(){
-  try { await fetchData(); renderAll(); }
-  catch(e) {
-    document.getElementById('tab-dashboard').innerHTML = `
-      <div class="error-box"><strong>⚠️ Could not load data</strong><br><br>
-      ${e.message}<br><br>Check your connection and hit Refresh.<br>
-      Source: <code style="font-size:11px">${DATA_URL}</code></div>`;
-    document.getElementById('updated-time').innerHTML = `⚠️ Fetch failed`;
-  }
-})();
-</script>
-</body>
-</html>
+        
 
